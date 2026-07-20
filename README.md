@@ -1,1 +1,8 @@
-# light-polarization-simulator
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.DS_Store
+Thumbs.db
+.ipynb_checkpoints/
