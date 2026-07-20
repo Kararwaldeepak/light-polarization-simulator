@@ -1,100 +1,514 @@
-#!/usr/bin/env python3
-"""Static polarization-of-light simulator and plot generator."""
-from __future__ import annotations
-import argparse
-from pathlib import Path
-from typing import Tuple
-import matplotlib.pyplot as plt
-import numpy as np
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Light Polarization Simulator</title>
+  <style>
+    :root {
+      --bg: #07111f;
+      --panel: #0e1d31;
+      --panel2: #132640;
+      --text: #edf5ff;
+      --muted: #a7bbd4;
+      --border: rgba(190,210,235,0.18);
+      --grid: rgba(190,210,235,0.14);
+      --cyan: #38bdf8;
+      --green: #34d399;
+      --amber: #f59e0b;
+      --pink: #fb7185;
+      --violet: #a78bfa;
+      --shadow: 0 18px 45px rgba(0,0,0,0.28);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 18% 4%, rgba(56,189,248,0.12), transparent 32rem),
+        radial-gradient(circle at 88% 16%, rgba(167,139,250,0.10), transparent 28rem),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+    a { color: var(--cyan); }
+    .container { width: min(1320px, calc(100% - 32px)); margin: 0 auto; }
+    header { padding: 58px 0 28px; }
+    .eyebrow {
+      display: inline-flex; gap: 8px; align-items: center; padding: 7px 12px;
+      border-radius: 999px; border: 1px solid var(--border);
+      background: rgba(14,29,49,0.72); color: #d6eeff; font-size: 0.84rem;
+      letter-spacing: 0.05em; text-transform: uppercase;
+    }
+    h1 {
+      margin: 18px 0 10px; max-width: 980px; font-size: clamp(2.25rem, 5.8vw, 4.9rem);
+      line-height: 0.97; letter-spacing: -0.055em;
+    }
+    .lead { margin: 0; max-width: 890px; color: var(--muted); font-size: clamp(1rem, 2vw, 1.18rem); }
+    .concept-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 28px 0; }
+    .card, .panel {
+      border: 1px solid var(--border); border-radius: 18px;
+      background: linear-gradient(145deg, rgba(19,38,64,0.95), rgba(10,24,42,0.94));
+      box-shadow: var(--shadow);
+    }
+    .card { padding: 18px; }
+    .card .n {
+      width: 34px; height: 34px; display: grid; place-items: center;
+      border-radius: 10px; background: rgba(56,189,248,0.12); color: var(--cyan); font-weight: 800;
+    }
+    .card h3 { margin: 12px 0 6px; font-size: 1rem; }
+    .card p { margin: 0; color: var(--muted); font-size: 0.92rem; }
+    .layout { display: grid; grid-template-columns: 330px minmax(0,1fr); gap: 18px; align-items: start; }
+    .panel { padding: 18px; }
+    .controls { position: sticky; top: 14px; }
+    .panel-title { margin: 0 0 5px; font-size: 1.08rem; }
+    .panel-subtitle { margin: 0 0 16px; color: var(--muted); font-size: 0.9rem; }
+    .control { margin-bottom: 15px; }
+    .control-row {
+      display: flex; justify-content: space-between; gap: 12px;
+      margin-bottom: 6px; align-items: baseline;
+    }
+    .control label { font-size: 0.9rem; font-weight: 650; color: #dcecff; }
+    .value { color: var(--cyan); font-size: 0.86rem; font-variant-numeric: tabular-nums; }
+    input[type="range"] { width: 100%; accent-color: var(--cyan); }
+    .button-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 16px; }
+    .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    button {
+      border: 1px solid var(--border); border-radius: 11px; padding: 10px 12px;
+      background: var(--panel2); color: var(--text); font: inherit; font-weight: 700;
+      cursor: pointer; transition: transform 120ms ease, border-color 120ms ease;
+    }
+    button:hover { transform: translateY(-1px); border-color: rgba(56,189,248,0.55); }
+    button.primary { background: linear-gradient(135deg, #0284c7, #2563eb); border-color: transparent; }
+    .visuals { display: grid; gap: 18px; }
+    .metrics { display: grid; grid-template-columns: repeat(5,1fr); gap: 10px; }
+    .metric { padding: 13px; border-radius: 13px; border: 1px solid var(--border); background: rgba(4,15,28,0.45); }
+    .metric span {
+      display: block; color: var(--muted); font-size: 0.76rem;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .metric strong { display: block; margin-top: 3px; font-size: 1.08rem; font-variant-numeric: tabular-nums; }
+    .view-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .plot-card { overflow: hidden; }
+    .plot-head { display: flex; justify-content: space-between; gap: 12px; align-items: end; margin-bottom: 8px; }
+    .plot-head h2 { margin: 0; font-size: 1.04rem; }
+    .plot-head p { margin: 0; color: var(--muted); font-size: 0.82rem; text-align: right; }
+    canvas { width: 100%; height: 315px; display: block; border-radius: 12px; background: rgba(3,12,22,0.7); }
+    canvas.small { height: 290px; }
+    canvas.wide { height: 340px; }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 24px 0 64px; }
+    .info-grid h2 { margin-top: 0; }
+    .info-grid p, .info-grid li { color: var(--muted); }
+    .equation {
+      padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border);
+      background: rgba(3,12,22,0.62); color: #e0f3ff; font-family: "Times New Roman", serif;
+      font-size: 1.06rem; overflow-x: auto; margin: 14px 0;
+    }
+    .callout {
+      padding: 14px 16px; border-left: 4px solid var(--amber);
+      background: rgba(245,158,11,0.09); border-radius: 10px; color: #ffe8b3;
+    }
+    footer { padding: 26px 0 48px; color: var(--muted); border-top: 1px solid var(--border); font-size: 0.9rem; }
+    @media (max-width: 1120px) {
+      .layout { grid-template-columns: 1fr; }
+      .controls { position: static; }
+      .metrics { grid-template-columns: repeat(3,1fr); }
+      .view-grid { grid-template-columns: 1fr; }
+      .info-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 760px) {
+      .concept-grid { grid-template-columns: repeat(2,1fr); }
+      .metrics { grid-template-columns: repeat(2,1fr); }
+    }
+    @media (max-width: 520px) {
+      .container { width: min(100% - 20px, 1320px); }
+      header { padding-top: 36px; }
+      .concept-grid { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: 1fr; }
+      .plot-head { display: block; }
+      .plot-head p { margin-top: 4px; text-align: left; }
+    }
+  </style>
+</head>
+<body>
+  <header class="container">
+    <span class="eyebrow">Interactive light polarization simulator</span>
+    <h1>Understand the polarization of light by controlling two orthogonal sinusoids</h1>
+    <p class="lead">
+      Change the amplitudes and phase difference of the x- and y-components of the electric field.
+      Watch the polarization ellipse from the face view, and see how the same wave appears in the side and top views as it propagates along z.
+    </p>
+    <section class="concept-grid" aria-label="Key concepts">
+      <article class="card"><div class="n">1</div><h3>Two orthogonal components</h3><p>Light polarization is determined by the relationship between Ex and Ey at the same frequency.</p></article>
+      <article class="card"><div class="n">2</div><h3>Phase difference sets shape</h3><p>δ = 0 or π gives linear polarization, while δ = ±π/2 with equal amplitudes gives circular polarization.</p></article>
+      <article class="card"><div class="n">3</div><h3>Amplitude ratio sets axes</h3><p>Changing Ax and Ay transforms a circle into an ellipse and rotates the resulting polarization state.</p></article>
+      <article class="card"><div class="n">4</div><h3>Front, side, and top views</h3><p>The same electromagnetic wave can be understood through its xy trajectory and its xz and yz propagation views.</p></article>
+    </section>
+  </header>
 
-def polarization_components(ax: float = 1.0, ay: float = 1.0, phase_deg: float = 90.0, n_samples: int = 1200) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    if ax < 0 or ay < 0:
-        raise ValueError("Amplitudes must be non-negative.")
-    if n_samples < 16:
-        raise ValueError("n_samples must be at least 16.")
-    phi = np.linspace(0.0, 2.0 * np.pi, n_samples)
-    delta = np.deg2rad(phase_deg)
-    ex = ax * np.cos(phi)
-    ey = ay * np.cos(phi + delta)
-    return phi, ex, ey
+  <main class="container">
+    <section class="layout">
+      <aside class="panel controls">
+        <h2 class="panel-title">Polarization controls</h2>
+        <p class="panel-subtitle">Use pure states or dial your own custom ellipse.</p>
 
-def stokes_parameters(ax: float, ay: float, phase_deg: float) -> Tuple[float, float, float, float]:
-    delta = np.deg2rad(phase_deg)
-    S0 = ax**2 + ay**2
-    if S0 == 0:
-        return 0.0, 0.0, 0.0, 0.0
-    S1 = ax**2 - ay**2
-    S2 = 2.0 * ax * ay * np.cos(delta)
-    S3 = 2.0 * ax * ay * np.sin(delta)
-    return S0, S1 / S0, S2 / S0, S3 / S0
+        <div class="control"><div class="control-row"><label for="ax">Amplitude A<sub>x</sub></label><span class="value" id="axValue"></span></div><input id="ax" type="range" min="0" max="1.50" step="0.01" value="1.00" /></div>
+        <div class="control"><div class="control-row"><label for="ay">Amplitude A<sub>y</sub></label><span class="value" id="ayValue"></span></div><input id="ay" type="range" min="0" max="1.50" step="0.01" value="1.00" /></div>
+        <div class="control"><div class="control-row"><label for="phase">Phase difference δ</label><span class="value" id="phaseValue"></span></div><input id="phase" type="range" min="-180" max="180" step="1" value="90" /></div>
+        <div class="control"><div class="control-row"><label for="wavelength">Wavelength λ</label><span class="value" id="wavelengthValue"></span></div><input id="wavelength" type="range" min="1.0" max="8.0" step="0.1" value="4.0" /></div>
+        <div class="control"><div class="control-row"><label for="speed">Animation speed</label><span class="value" id="speedValue"></span></div><input id="speed" type="range" min="0.2" max="3.0" step="0.05" value="1.0" /></div>
+        <div class="control"><div class="control-row"><label for="trace">Trajectory persistence</label><span class="value" id="traceValue"></span></div><input id="trace" type="range" min="0.20" max="1.00" step="0.01" value="1.00" /></div>
 
-def classify_state(ax: float, ay: float, phase_deg: float) -> Tuple[str, str, float, float]:
-    S0, s1, s2, s3 = stokes_parameters(ax, ay, phase_deg)
-    if S0 == 0:
-        return "Zero field", "—", 0.0, 0.0
-    psi = 0.5 * np.rad2deg(np.arctan2(s2, s1))
-    chi = 0.5 * np.rad2deg(np.arcsin(np.clip(s3, -1.0, 1.0)))
-    delta = np.deg2rad(phase_deg)
-    near_linear = abs(np.sin(delta)) < 0.045 or ax < 0.02 or ay < 0.02
-    near_circular = abs(ax - ay) < 0.04 and abs(abs(phase_deg) - 90.0) < 4.0
-    if near_linear:
-        return "Linear", "None", psi, chi
-    if near_circular:
-        handed = "Left-handed" if s3 > 0 else "Right-handed"
-        return "Circular", handed, psi, chi
-    handed = "Left-handed" if s3 > 0 else "Right-handed"
-    return "Elliptical", handed, psi, chi
+        <div class="button-grid">
+          <button class="primary" id="playBtn">Pause animation</button>
+          <button id="resetBtn">Reset</button>
+        </div>
 
-def make_plots(ax: float = 1.0, ay: float = 1.0, phase_deg: float = 90.0, save_prefix: Path | None = None, show: bool = False) -> None:
-    phi, ex, ey = polarization_components(ax=ax, ay=ay, phase_deg=phase_deg)
-    _, s1, s2, s3 = stokes_parameters(ax, ay, phase_deg)
-    label, handed, psi, chi = classify_state(ax, ay, phase_deg)
-    max_a = max(ax, ay, 1e-6)
-    fig1, ax1 = plt.subplots(figsize=(5.2, 5.0))
-    ax1.plot(ex, ey, linewidth=1.8)
-    ax1.axhline(0.0, linewidth=0.8)
-    ax1.axvline(0.0, linewidth=0.8)
-    ax1.set_xlabel(r"$E_x$")
-    ax1.set_ylabel(r"$E_y$")
-    ax1.set_title(f"Polarization trajectory: {label}")
-    ax1.set_aspect("equal", adjustable="box")
-    ax1.set_xlim(-1.15 * max_a, 1.15 * max_a)
-    ax1.set_ylim(-1.15 * max_a, 1.15 * max_a)
-    ax1.tick_params(direction="in", top=True, right=True)
-    ax1.text(0.03, 0.97, "\n".join([f"State: {label}", f"Handedness: {handed}", rf"$\psi$ = {psi:.1f}°", rf"$\chi$ = {chi:.1f}°", rf"$s_1,s_2,s_3$ = ({s1:.2f}, {s2:.2f}, {s3:.2f})"]), transform=ax1.transAxes, va="top", fontsize=9)
-    fig1.tight_layout()
-    fig2, ax2 = plt.subplots(figsize=(7.0, 4.2))
-    ax2.plot(phi, ex, linewidth=1.5, label=r"$E_x(t)$")
-    ax2.plot(phi, ey, linewidth=1.5, label=r"$E_y(t)$")
-    ax2.axhline(0.0, linewidth=0.8)
-    ax2.set_xlabel(r"Phase / time variable $\phi$")
-    ax2.set_ylabel("Field amplitude (a.u.)")
-    ax2.set_title("Orthogonal sinusoidal components")
-    ax2.legend(frameon=False)
-    ax2.tick_params(direction="in", top=True, right=True)
-    fig2.tight_layout()
-    if save_prefix is not None:
-        save_prefix.parent.mkdir(parents=True, exist_ok=True)
-        fig1.savefig(save_prefix.with_name(save_prefix.name + "_front.png"), dpi=220)
-        fig2.savefig(save_prefix.with_name(save_prefix.name + "_time.png"), dpi=220)
-    if show:
-        plt.show()
-    else:
-        plt.close(fig1)
-        plt.close(fig2)
+        <h3 style="margin:18px 0 8px; font-size: 0.98rem;">Preset states</h3>
+        <div class="preset-grid">
+          <button data-preset="linear-x">Linear X</button>
+          <button data-preset="linear-y">Linear Y</button>
+          <button data-preset="linear-45">Linear +45°</button>
+          <button data-preset="linear-135">Linear −45°</button>
+          <button data-preset="circular-r">Circular (R)</button>
+          <button data-preset="circular-l">Circular (L)</button>
+          <button data-preset="elliptical-r">Elliptical (R)</button>
+          <button data-preset="elliptical-l">Elliptical (L)</button>
+        </div>
+      </aside>
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate polarization-of-light plots from two orthogonal sinusoids.")
-    parser.add_argument("--ax", type=float, default=1.0, help="Amplitude of Ex.")
-    parser.add_argument("--ay", type=float, default=1.0, help="Amplitude of Ey.")
-    parser.add_argument("--phase", type=float, default=90.0, help="Phase difference in degrees.")
-    parser.add_argument("--save-prefix", type=Path, help="Optional figure prefix, e.g. figures/state.")
-    parser.add_argument("--show", action="store_true", help="Show plots interactively.")
-    return parser
+      <section class="visuals">
+        <article class="panel">
+          <div class="metrics">
+            <div class="metric"><span>State</span><strong id="stateMetric">—</strong></div>
+            <div class="metric"><span>Orientation ψ</span><strong id="psiMetric">—</strong></div>
+            <div class="metric"><span>Ellipticity χ</span><strong id="chiMetric">—</strong></div>
+            <div class="metric"><span>Stokes (s1, s2, s3)</span><strong id="stokesMetric">—</strong></div>
+            <div class="metric"><span>Handedness</span><strong id="handMetric">—</strong></div>
+          </div>
+        </article>
 
-def main() -> None:
-    args = build_parser().parse_args()
-    make_plots(ax=args.ax, ay=args.ay, phase_deg=args.phase, save_prefix=args.save_prefix, show=args.show)
+        <section class="view-grid">
+          <article class="panel plot-card"><div class="plot-head"><h2>Face view (xy): polarization trajectory</h2><p>Looking into the propagation axis z.</p></div><canvas id="frontCanvas" class="small"></canvas></article>
+          <article class="panel plot-card"><div class="plot-head"><h2>Side view (xz)</h2><p>Snapshot of the wave propagating along +z.</p></div><canvas id="sideCanvas" class="small"></canvas></article>
+          <article class="panel plot-card"><div class="plot-head"><h2>Top view (yz)</h2><p>The orthogonal component across the same propagation axis.</p></div><canvas id="topCanvas" class="small"></canvas></article>
+        </section>
 
-if __name__ == "__main__":
-    main()
+        <article class="panel plot-card"><div class="plot-head"><h2>Component waveforms: E<sub>x</sub>(t) and E<sub>y</sub>(t)</h2><p>The phase shift between these sinusoids determines the polarization state.</p></div><canvas id="timeCanvas" class="wide"></canvas></article>
+      </section>
+    </section>
+
+    <section class="info-grid">
+      <article class="panel">
+        <h2>Mathematical model</h2>
+        <p>The electric field is decomposed into two orthogonal harmonic components with the same optical frequency:</p>
+        <div class="equation">E<sub>x</sub>(t,z) = A<sub>x</sub> cos(kz − ωt),<br>E<sub>y</sub>(t,z) = A<sub>y</sub> cos(kz − ωt + δ)</div>
+        <p>For polarization, the key free parameters are the amplitude ratio A<sub>y</sub>/A<sub>x</sub> and the phase difference δ.</p>
+        <p>The normalized Stokes parameters for these ideal components are:</p>
+        <div class="equation">s<sub>1</sub> = (A<sub>x</sub><sup>2</sup> − A<sub>y</sub><sup>2</sup>) / S<sub>0</sub><br>s<sub>2</sub> = 2A<sub>x</sub>A<sub>y</sub> cosδ / S<sub>0</sub><br>s<sub>3</sub> = 2A<sub>x</sub>A<sub>y</sub> sinδ / S<sub>0</sub></div>
+      </article>
+
+      <article class="panel">
+        <h2>How to interpret the views</h2>
+        <ul>
+          <li><strong>Face view (xy):</strong> directly shows the polarization ellipse traced by the electric-field tip.</li>
+          <li><strong>Side view (xz):</strong> shows the x-component of the field as the wave propagates along z.</li>
+          <li><strong>Top view (yz):</strong> shows the y-component of the field along the same propagation axis.</li>
+          <li><strong>Waveform plot:</strong> compares E<sub>x</sub>(t) and E<sub>y</sub>(t) in time.</li>
+        </ul>
+        <div class="callout">Pure polarization states require the two components to oscillate at the same frequency. The simulator therefore keeps a common frequency and lets you vary amplitudes and relative phase.</div>
+      </article>
+
+      <article class="panel">
+        <h2>Suggested experiments</h2>
+        <ul>
+          <li>Set δ = 0° and compare Ax ≠ Ay versus Ax = Ay.</li>
+          <li>Set Ax = Ay and vary δ from 0° to 90° to see linear → elliptical → circular polarization.</li>
+          <li>Flip δ from +90° to −90° to reverse the handedness.</li>
+          <li>Use the preset buttons and compare the Stokes parameters.</li>
+          <li>Try Ax = 1 and Ay = 0.4 at δ = 60° to create a generic elliptical state.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Classification rules used here</h2>
+        <ul>
+          <li><strong>Linear:</strong> |sinδ| ≈ 0 or one amplitude vanishes.</li>
+          <li><strong>Circular:</strong> Ax ≈ Ay and |δ| ≈ 90°.</li>
+          <li><strong>Elliptical:</strong> all other non-degenerate cases.</li>
+        </ul>
+        <p>The orientation angle ψ and ellipticity angle χ are computed from the Stokes parameters.</p>
+      </article>
+    </section>
+  </main>
+
+  <footer><div class="container">Built as an open educational polarization repository by Deepak Kararwal. Released under the MIT License.</div></footer>
+
+  <script>
+    "use strict";
+    const defaults = { ax: 1.00, ay: 1.00, phase: 90, wavelength: 4.0, speed: 1.0, trace: 1.0 };
+    const controls = {};
+    const valueLabels = {};
+    for (const key of Object.keys(defaults)) {
+      controls[key] = document.getElementById(key);
+      valueLabels[key] = document.getElementById(key + "Value");
+    }
+    const frontCanvas = document.getElementById("frontCanvas");
+    const sideCanvas = document.getElementById("sideCanvas");
+    const topCanvas = document.getElementById("topCanvas");
+    const timeCanvas = document.getElementById("timeCanvas");
+    let playing = true;
+    let phaseTime = 0;
+    let lastStamp = 0;
+
+    function readParams() {
+      return {
+        ax: Number(controls.ax.value),
+        ay: Number(controls.ay.value),
+        deltaDeg: Number(controls.phase.value),
+        deltaRad: Number(controls.phase.value) * Math.PI / 180,
+        wavelength: Number(controls.wavelength.value),
+        speed: Number(controls.speed.value),
+        trace: Number(controls.trace.value)
+      };
+    }
+    function formatLabels() {
+      const p = readParams();
+      valueLabels.ax.textContent = p.ax.toFixed(2);
+      valueLabels.ay.textContent = p.ay.toFixed(2);
+      valueLabels.phase.textContent = p.deltaDeg.toFixed(0) + "°";
+      valueLabels.wavelength.textContent = p.wavelength.toFixed(1) + " units";
+      valueLabels.speed.textContent = p.speed.toFixed(2) + "×";
+      valueLabels.trace.textContent = p.trace.toFixed(2);
+    }
+    function computeState() {
+      const p = readParams();
+      const S0 = p.ax * p.ax + p.ay * p.ay;
+      const S1 = p.ax * p.ax - p.ay * p.ay;
+      const S2 = 2 * p.ax * p.ay * Math.cos(p.deltaRad);
+      const S3 = 2 * p.ax * p.ay * Math.sin(p.deltaRad);
+      const s1 = S0 > 1e-12 ? S1 / S0 : 0;
+      const s2 = S0 > 1e-12 ? S2 / S0 : 0;
+      const s3 = S0 > 1e-12 ? S3 / S0 : 0;
+      const psi = 0.5 * Math.atan2(S2, S1) * 180 / Math.PI;
+      const chi = 0.5 * Math.asin(Math.max(-1, Math.min(1, s3))) * 180 / Math.PI;
+      let label = "Zero field";
+      let handed = "—";
+      const eps = 0.045;
+      if (S0 > 1e-10) {
+        const equalAmp = Math.abs(p.ax - p.ay) < 0.04;
+        const nearQuarter = Math.abs(Math.abs(p.deltaDeg) - 90) < 4;
+        const nearLinear = Math.abs(Math.sin(p.deltaRad)) < eps || p.ax < 0.02 || p.ay < 0.02;
+        if (nearLinear) { label = "Linear"; handed = "None"; }
+        else if (equalAmp && nearQuarter) { label = "Circular"; handed = s3 > 0 ? "Left-handed" : "Right-handed"; }
+        else { label = "Elliptical"; handed = s3 > 0 ? "Left-handed" : "Right-handed"; }
+      }
+      return { ...p, S0, s1, s2, s3, psi, chi, label, handed };
+    }
+    function updateMetrics() {
+      const s = computeState();
+      document.getElementById("stateMetric").textContent = s.label;
+      document.getElementById("psiMetric").textContent = s.psi.toFixed(1) + "°";
+      document.getElementById("chiMetric").textContent = s.chi.toFixed(1) + "°";
+      document.getElementById("stokesMetric").textContent = `${s.s1.toFixed(2)}, ${s.s2.toFixed(2)}, ${s.s3.toFixed(2)}`;
+      document.getElementById("handMetric").textContent = s.handed;
+    }
+    function canvasSetup(canvas) {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(280, rect.width);
+      const height = Math.max(220, rect.height);
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { ctx, width, height };
+    }
+    function clearAndBorder(ctx, width, height) {
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "rgba(3,12,22,0.72)";
+      ctx.fillRect(0, 0, width, height);
+    }
+    function drawGrid(ctx, x0, y0, w, h, nX=8, nY=8) {
+      ctx.strokeStyle = "rgba(190,210,235,0.14)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= nX; i++) { const x = x0 + i * w / nX; ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + h); ctx.stroke(); }
+      for (let j = 0; j <= nY; j++) { const y = y0 + j * h / nY; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + w, y); ctx.stroke(); }
+    }
+    function drawFrontView() {
+      const { ctx, width, height } = canvasSetup(frontCanvas);
+      clearAndBorder(ctx, width, height);
+      const pad = 24;
+      drawGrid(ctx, pad, pad, width - 2 * pad, height - 2 * pad, 8, 8);
+      const s = computeState();
+      const centerX = width / 2, centerY = height / 2;
+      const maxA = Math.max(s.ax, s.ay, 1e-6);
+      const scale = 0.37 * Math.min(width, height) / maxA;
+      ctx.strokeStyle = "rgba(220,236,255,0.42)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(pad, centerY); ctx.lineTo(width - pad, centerY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(centerX, pad); ctx.lineTo(centerX, height - pad); ctx.stroke();
+      ctx.fillStyle = "#b7c7d9"; ctx.font = "12px system-ui, sans-serif";
+      ctx.fillText("x", width - pad - 8, centerY - 8); ctx.fillText("y", centerX + 8, pad + 14);
+      const samples = 360;
+      ctx.strokeStyle = "rgba(56,189,248,0.92)";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      for (let i = 0; i <= samples; i++) {
+        const phi = 2 * Math.PI * i / samples;
+        const ex = s.ax * Math.cos(phi);
+        const ey = s.ay * Math.cos(phi + s.deltaRad);
+        const px = centerX + ex * scale, py = centerY - ey * scale;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      const exNow = s.ax * Math.cos(phaseTime);
+      const eyNow = s.ay * Math.cos(phaseTime + s.deltaRad);
+      const px = centerX + exNow * scale, py = centerY - eyNow * scale;
+      ctx.strokeStyle = "rgba(245,158,11,0.90)";
+      ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.moveTo(centerX, centerY); ctx.lineTo(px, py); ctx.stroke();
+      ctx.fillStyle = "#f59e0b";
+      ctx.beginPath(); ctx.arc(px, py, 5.2, 0, 2 * Math.PI); ctx.fill();
+      const trailCount = Math.floor(120 * s.trace);
+      if (trailCount > 1) {
+        for (let j = 1; j <= trailCount; j++) {
+          const frac = j / trailCount;
+          const phi = phaseTime - frac * Math.PI * 1.5;
+          const ex = s.ax * Math.cos(phi), ey = s.ay * Math.cos(phi + s.deltaRad);
+          ctx.fillStyle = `rgba(167,139,250,${0.35 * (1 - frac)})`;
+          ctx.beginPath(); ctx.arc(centerX + ex * scale, centerY - ey * scale, 2.2, 0, 2 * Math.PI); ctx.fill();
+        }
+      }
+      ctx.strokeStyle = "rgba(220,236,255,0.35)";
+      ctx.strokeRect(pad, pad, width - 2 * pad, height - 2 * pad);
+    }
+    function drawWaveProjection(canvas, component="x") {
+      const { ctx, width, height } = canvasSetup(canvas);
+      clearAndBorder(ctx, width, height);
+      const s = computeState();
+      const margin = { left: 46, right: 18, top: 20, bottom: 34 };
+      const plotW = width - margin.left - margin.right;
+      const plotH = height - margin.top - margin.bottom;
+      drawGrid(ctx, margin.left, margin.top, plotW, plotH, 8, 8);
+      const amp = component === "x" ? s.ax : s.ay;
+      const localPhase = component === "x" ? 0 : s.deltaRad;
+      const zMin = 0, zMax = 2.0 * s.wavelength;
+      const maxA = Math.max(s.ax, s.ay, 1e-6) * 1.1;
+      const xToPx = z => margin.left + (z - zMin) / (zMax - zMin) * plotW;
+      const yToPx = v => margin.top + (maxA - v) / (2 * maxA) * plotH;
+      ctx.strokeStyle = "rgba(220,236,255,0.42)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(margin.left, yToPx(0)); ctx.lineTo(margin.left + plotW, yToPx(0)); ctx.stroke();
+      ctx.fillStyle = "#b7c7d9"; ctx.font = "12px system-ui, sans-serif";
+      ctx.fillText("z", margin.left + plotW - 8, yToPx(0) - 8); ctx.fillText(component, margin.left + 4, margin.top + 12);
+      const k = 2 * Math.PI / s.wavelength;
+      const points = 500;
+      ctx.strokeStyle = component === "x" ? "#34d399" : "#fb7185";
+      ctx.lineWidth = 2.1;
+      ctx.beginPath();
+      for (let i = 0; i <= points; i++) {
+        const z = zMin + (zMax - zMin) * i / points;
+        const v = amp * Math.cos(k * z - phaseTime + localPhase);
+        const px = xToPx(z), py = yToPx(v);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      const zMarker = 0.45 * s.wavelength;
+      const vMarker = amp * Math.cos(k * zMarker - phaseTime + localPhase);
+      ctx.fillStyle = "#f59e0b";
+      ctx.beginPath(); ctx.arc(xToPx(zMarker), yToPx(vMarker), 5.0, 0, 2 * Math.PI); ctx.fill();
+      ctx.strokeStyle = "rgba(220,236,255,0.35)";
+      ctx.strokeRect(margin.left, margin.top, plotW, plotH);
+    }
+    function niceTicks(min, max, count=6) {
+      const span = Math.max(max - min, 1e-12), raw = span / count;
+      const pow = 10 ** Math.floor(Math.log10(raw)), mult = raw / pow;
+      const step = (mult < 1.5 ? 1 : mult < 3 ? 2 : mult < 7 ? 5 : 10) * pow;
+      const start = Math.ceil(min / step) * step;
+      const ticks = [];
+      for (let v = start; v <= max + 0.25 * step; v += step) ticks.push(v);
+      return ticks;
+    }
+    function drawTimeTraces() {
+      const { ctx, width, height } = canvasSetup(timeCanvas);
+      clearAndBorder(ctx, width, height);
+      const s = computeState();
+      const margin = { left: 58, right: 18, top: 18, bottom: 44 };
+      const plotW = width - margin.left - margin.right;
+      const plotH = height - margin.top - margin.bottom;
+      drawGrid(ctx, margin.left, margin.top, plotW, plotH, 8, 8);
+      const tMin = 0, tMax = 2 * Math.PI;
+      const yMin = -Math.max(s.ax, s.ay, 1e-6) * 1.15;
+      const yMax = -yMin;
+      const xToPx = t => margin.left + (t - tMin) / (tMax - tMin) * plotW;
+      const yToPx = y => margin.top + (yMax - y) / (yMax - yMin) * plotH;
+      ctx.strokeStyle = "rgba(220,236,255,0.42)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(margin.left, yToPx(0)); ctx.lineTo(margin.left + plotW, yToPx(0)); ctx.stroke();
+      ctx.fillStyle = "#9eb1c8"; ctx.font = "12px system-ui, sans-serif";
+      for (const tick of niceTicks(0, 2 * Math.PI, 6)) {
+        const x = xToPx(tick);
+        ctx.strokeStyle = "rgba(190,210,235,0.16)";
+        ctx.beginPath(); ctx.moveTo(x, margin.top); ctx.lineTo(x, margin.top + plotH); ctx.stroke();
+        ctx.fillText((tick / Math.PI).toFixed(1) + "π", x - 10, margin.top + plotH + 18);
+      }
+      for (const tick of niceTicks(yMin, yMax, 5)) {
+        const y = yToPx(tick);
+        ctx.fillText(tick.toFixed(1), margin.left - 38, y + 4);
+      }
+      function drawCurve(color, fn) {
+        ctx.strokeStyle = color; ctx.lineWidth = 2.2; ctx.beginPath();
+        const points = 500;
+        for (let i = 0; i <= points; i++) {
+          const t = tMin + (tMax - tMin) * i / points;
+          const px = xToPx(t), py = yToPx(fn(t));
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      drawCurve("#34d399", t => s.ax * Math.cos(t));
+      drawCurve("#fb7185", t => s.ay * Math.cos(t + s.deltaRad));
+      const markerT = ((phaseTime % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      const exM = s.ax * Math.cos(markerT), eyM = s.ay * Math.cos(markerT + s.deltaRad);
+      ctx.fillStyle = "#34d399"; ctx.beginPath(); ctx.arc(xToPx(markerT), yToPx(exM), 4.8, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = "#fb7185"; ctx.beginPath(); ctx.arc(xToPx(markerT), yToPx(eyM), 4.8, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = "#b7c7d9"; ctx.fillText("time / phase", margin.left + plotW / 2 - 28, height - 9);
+      ctx.fillStyle = "#34d399"; ctx.fillText("Ex(t)", margin.left + 10, margin.top + 16);
+      ctx.fillStyle = "#fb7185"; ctx.fillText("Ey(t)", margin.left + 70, margin.top + 16);
+      ctx.strokeStyle = "rgba(220,236,255,0.35)";
+      ctx.strokeRect(margin.left, margin.top, plotW, plotH);
+    }
+    function renderAll() { formatLabels(); updateMetrics(); drawFrontView(); drawWaveProjection(sideCanvas, "x"); drawWaveProjection(topCanvas, "y"); drawTimeTraces(); }
+    function applyPreset(name) {
+      const presetMap = {
+        "linear-x": { ax: 1.0, ay: 0.0, phase: 0 },
+        "linear-y": { ax: 0.0, ay: 1.0, phase: 0 },
+        "linear-45": { ax: 1.0, ay: 1.0, phase: 0 },
+        "linear-135": { ax: 1.0, ay: 1.0, phase: 180 },
+        "circular-r": { ax: 1.0, ay: 1.0, phase: -90 },
+        "circular-l": { ax: 1.0, ay: 1.0, phase: 90 },
+        "elliptical-r": { ax: 1.0, ay: 0.65, phase: -60 },
+        "elliptical-l": { ax: 1.0, ay: 0.65, phase: 60 }
+      };
+      const p = presetMap[name]; if (!p) return;
+      controls.ax.value = p.ax.toFixed(2); controls.ay.value = p.ay.toFixed(2); controls.phase.value = String(p.phase); renderAll();
+    }
+    for (const key of Object.keys(defaults)) controls[key].addEventListener("input", renderAll);
+    document.querySelectorAll("[data-preset]").forEach(btn => btn.addEventListener("click", () => applyPreset(btn.dataset.preset)));
+    document.getElementById("resetBtn").addEventListener("click", () => { for (const key of Object.keys(defaults)) controls[key].value = defaults[key]; renderAll(); });
+    document.getElementById("playBtn").addEventListener("click", (e) => { playing = !playing; e.target.textContent = playing ? "Pause animation" : "Play animation"; });
+    function animate(stamp) {
+      if (!lastStamp) lastStamp = stamp;
+      const dt = (stamp - lastStamp) / 1000;
+      lastStamp = stamp;
+      if (playing) { phaseTime += dt * 2.5 * readParams().speed; renderAll(); }
+      requestAnimationFrame(animate);
+    }
+    window.addEventListener("resize", renderAll);
+    renderAll();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
